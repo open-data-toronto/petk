@@ -7,11 +7,12 @@ import petk.constants as constants
 
 
 def get_type(series):
+    if series.name == 'geometry':
+        return constants.TYPE_GEO
+
     try:
         distinct_count = series.nunique()
         value_count = series.nunique(dropna=False)
-
-        # TODO: GEOMETRY
 
         if value_count == 1 and distinct_count == 0:
             return constants.TYPE_EMPTY
@@ -28,5 +29,5 @@ def get_type(series):
         else:
             return constants.TYPE_STR
     except:
-        # eg. 2D seriess
+        # eg. 2D series
         return constants.TYPE_UNSUPPORTED
