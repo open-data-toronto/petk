@@ -9,57 +9,67 @@ import petk.utils as utils
 class DataReport:
     def __init__(self, data):
         self.df = data
-        self.history = [] # List of DataProfiles (for now)
+        self.history = {}
+
+    @property
+    def describe(self):
+        keys = []
+        for k, v in self.history.items():
+            if len(v.description.keys()) > len(keys):
+                keys = v.description.keys()
+
+        return pd.DataFrame(
+            [x.description for x in self.history.values()],
+            columns=keys
+        ).set_index('column').T
+
+    def visualize(self):
+        pass
+
+    def summarize(self):
+        pass
 
     def introduce(self):
-        return pd.Series({
+        dd = pd.Series({
             'memory_usage': np.sum(self.df.memory_usage(deep=True)),
             'rows': len(self.df),
             'columns': len(self.df.columns),
-            'total_observations': np.prod(self.df.shape),
-            'missing_observations': np.sum(len(df) - self.df.count())
+            'observations: total': np.prod(self.df.shape),
+            'observations: missing': np.sum(len(self.df) - self.df.count())
         })
 
-    def describe_columns(self):
-        return pd.Series([
-            utils.get_type(self.df[col]).lower()
-        ] for col in self.df.columns).value_counts()
+        cd = pd.Series([
+            'columns: {0}'.format(utils.get_type(self.df[col]).lower()) for col in self.df.columns
+        ]).value_counts()
 
-    # MOVE TO DATAPROFILE?
-    def correlate(self, how='pearson', visualize=True):
-        pass
+        return dd.append(cd)
 
-    def profile(self, columns=self.df.columns):
-        pass
+    def profile(self, **kwargs):
+        columns = kwargs.get('columns', self.df.columns)
 
-    def summarize_profiles(self):
-        # Describe number of profiles and how many include visualizations
-        pass
-
-    def generate_report(self):
-        pass
-
-    def visualize_report(self):
-        pass
+        for col in columns:
+            if col not in self.history.keys():
+                self.history[col] = DataProfile(self.df[col])
 
 class DataProfile:
     def __init__(self, series, top=5, visualize=True):
         self.series = series
 
         dtype = utils.get_type(self.series)
-        # TODO: Convert these 2 functions to static functions
-        desc = self.get_description()
-        fv = self.get_frequent_values(top)
-
         self.dtype = dtype
+
+        desc = self.get_description()
         self.description = desc
-        self.frequent_values = fv
+
+        # fv = self.get_frequent_values(top)
+        # self.frequent_values = fv
 
     def get_description(self):
         count = self.series.count() # ONLY non-NaN observations
 
         description = {
             'type': self.dtype,
+            'column': self.series.name,
             'memory_usage': self.series.memory_usage(),
             'count': count,
             'p_missing': (self.series.size - count) / self.series.size,
@@ -70,9 +80,9 @@ class DataProfile:
             n_distinct = self.series.nunique()
 
             description.update({
-                'distinct_count': distinct_count,
-                'is_unique': distinct_count == self.series.size,
-                'p_unique': distinct_count * 1.0 / self.series.size
+                'distinct_count': n_distinct,
+                'is_unique': n_distinct == self.series.size,
+                'p_unique': n_distinct * 1.0 / self.series.size
             })
 
             if self.dtype == constants.TYPE_BOOL:
@@ -89,7 +99,7 @@ class DataProfile:
                     'max': self.series.max()
                 })
 
-                for perc in np.series([0.05, 0.25, 0.5, 0.75, 0.95]):
+                for perc in [0.05, 0.25, 0.5, 0.75, 0.95]:
                     description['{:.0%}'.format(perc)] = self.series.quantile(perc)
 
                 if self.dtype == constants.TYPE_NUM:
@@ -111,15 +121,15 @@ class DataProfile:
 
         return description
 
-    def get_frequent_values(self, top):
-        return self.series.value_counts(dropna=False).head(top)
-
-    def get_distribution(self, top):
-        assert self.dtype in [constants.STR, constants.DATE, constants.NUM], 'Distribution not available'
-
-        if self.dtype == constants.STR:
-            # Histogram of most frequen top values
-            pass
-        else:
-            # Distribution Plot
-            pass
+    # def get_frequent_values(self, top):
+    #     return self.series.value_counts(dropna=False).head(top)
+    #
+    # def get_distribution(self, top):
+    #     assert self.dtype in [constants.STR, constants.DATE, constants.NUM], 'Distribution not available'
+    #
+    #     if self.dtype == constants.STR:
+    #         # Histogram of most frequen top values
+    #         pass
+    #     else:
+    #         # Distribution Plot
+    #         pass
