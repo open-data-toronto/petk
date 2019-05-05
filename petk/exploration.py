@@ -1,3 +1,6 @@
+from shapely.validation import explain_validity
+
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -9,17 +12,18 @@ import petk.utils as utils
 class DataReport:
     def __init__(self, data):
         self.df = data
-        self.history = {}
+
+        self.description = {}
 
     @property
     def describe(self):
         keys = []
-        for k, v in self.history.items():
+        for k, v in self.description.items():
             if len(v.description.keys()) > len(keys):
                 keys = v.description.keys()
 
         return pd.DataFrame(
-            [x.description for x in self.history.values()],
+            [x.description for x in self.description.values()],
             columns=keys
         ).set_index('column').T
 
@@ -44,15 +48,18 @@ class DataReport:
 
         return dd.append(cd)
 
-    def profile(self, **kwargs):
-        columns = kwargs.get('columns', self.df.columns)
+    def profile_columns(self, columns=[]):
+        # TODO: assert kwargs
+
+        if not columns:
+            columns = self.df.columns
 
         for col in columns:
-            if col not in self.history.keys():
-                self.history[col] = DataProfile(self.df[col])
+            if col not in self.description.keys():
+                self.description[col] = DataProfile(self.df[col])
 
 class DataProfile:
-    def __init__(self, series, top=5, visualize=True):
+    def __init__(self, series):
         self.series = series
 
         dtype = utils.get_type(self.series)
@@ -133,3 +140,56 @@ class DataProfile:
     #     else:
     #         # Distribution Plot
     #         pass
+
+class GeoReport:
+    def __init__(self, series, **kwargs):
+        self.series = series
+        self.description = {}
+
+    @property
+    def describe(self):
+        return pd.concat(self.description.values(), keys=self.description.keys(), sort=False).swaplevel(0, 1)
+
+    def find_invalids(self):
+        invalid = gpd.GeoDataFrame(self.series[~self.series.is_valid])
+
+        if not invalid.empty:
+            invalid['notes'] = invalid['geometry'].apply(lambda x: explain_validity(x) if not x is None else 'Null geometry')
+            self.description['invalid_geometries'] = invalid
+
+            return invalid
+
+    def find_outsiders(self, xmin, xmax, ymin, ymax):
+        # TODO: assert bbox
+
+        # There has to be a better way to select outside of a bounding box...
+        invalid = gpd.GeoDataFrame(self.series.loc[~self.series.index.isin(self.series.cx[xmin:xmax, ymin:ymax].index)])
+
+        if not invalid.empty:
+            invalid['notes'] = 'Outside of bbox({0}, {1}, {2}, {3})'.format(xmin, xmax, ymin, ymax)
+            self.description['outside_boundaries'] = invalid
+
+            return invalid
+
+    def find_slivers(self, area_thresh=constants.SLIVER_AREA, line_thresh=constants.SLIVER_LINE):
+        pieces = self.series.explode().to_crs({'init': 'epsg:2019', 'units': 'm'})
+
+        slivers = pieces.apply(self._is_sliver, args=(area_thresh, line_thresh))
+        slivers = slivers[slivers].groupby(level=0).count()
+
+        if not slivers.empty:
+            slivers = gpd.GeoDataFrame({
+                'geometry': self.series,
+                'notes': slivers.apply(lambda x: '{0} slivers found within geometry'.format(x))
+            }).dropna()
+            self.description['slivers'] = slivers
+
+            return slivers
+
+    def _is_sliver(self, x, area_thresh, line_thresh):
+        if 'polygon' in x.geom_type.lower():
+            return x.area < area_thresh
+        elif 'linestring' in x.geom_type.lower():
+            return x.length < line_thresh
+        else:   # Points
+            return False
