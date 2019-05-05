@@ -4,10 +4,9 @@ import geopandas as gpd
 
 import petk.constants as constants
 
+
 # Validation methods deals with the GeoDataFrame content as a whole
 
-def validate_column_names(df):
-    return all(len(x) <= 10 for x in df.columns)
 
 def validate_single_geom_type(df):
     geom_types = df.geom_type.unique()
@@ -39,10 +38,10 @@ def find_outsiders(data, bbox=[], xmin=None, xmax=None, ymin=None, ymax=None):
     if not invalid.empty:
         return invalid
 
-def find_slivers(data):
+def find_slivers(data, area_thresh=constants.SLIVER_AREA, line_thresh=constants.SLIVER_LINE):
     pieces = data.explode().to_crs({'init': 'epsg:2019', 'units': 'm'})
 
-    slivers = pieces.apply(_find_sliver)
+    slivers = pieces.apply(_find_sliver, args=(area_thresh, line_thresh))
     slivers = slivers[slivers].groupby(level=0).count()
 
     if not slivers.empty:
@@ -53,10 +52,10 @@ def find_slivers(data):
 
         return slivers
 
-def _find_sliver(x):
+def _find_sliver(x, area_thresh, line_thresh):
     if 'polygon' in x.geom_type.lower():
-        return x.area < constants.SLIVER_AREA
+        return x.area < area_thresh
     elif 'linestring' in x.geom_type.lower():
-        return x.length < constants.SLIVER_LINE
+        return x.length < line_thresh
     else:   # Points
         return False
