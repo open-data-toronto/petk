@@ -1,3 +1,7 @@
+# Various files and folders created during development process
+examples/
+staging/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
