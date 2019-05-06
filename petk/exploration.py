@@ -12,7 +12,6 @@ import petk.utils as utils
 class DataReport:
     def __init__(self, data):
         self.df = data
-
         self.description = {}
 
     @property
@@ -26,12 +25,6 @@ class DataReport:
             [x.description for x in self.description.values()],
             columns=keys
         ).set_index('column').T
-
-    def visualize(self):
-        pass
-
-    def summarize(self):
-        pass
 
     def introduce(self):
         dd = pd.Series({
@@ -56,22 +49,9 @@ class DataReport:
 
         for col in columns:
             if col not in self.description.keys():
-                self.description[col] = DataProfile(self.df[col])
+                self.description[col] = get_description(self.df[col])
 
-class DataProfile:
-    def __init__(self, series):
-        self.series = series
-
-        dtype = utils.get_type(self.series)
-        self.dtype = dtype
-
-        desc = self.get_description()
-        self.description = desc
-
-        # fv = self.get_frequent_values(top)
-        # self.frequent_values = fv
-
-    def get_description(self):
+    def get_description(self, series):
         count = self.series.count() # ONLY non-NaN observations
 
         description = {
@@ -141,6 +121,7 @@ class DataProfile:
     #         # Distribution Plot
     #         pass
 
+# TODO: verbose option that returns all feature and geometry
 class GeoReport:
     def __init__(self, series, **kwargs):
         self.series = series
@@ -148,7 +129,7 @@ class GeoReport:
 
     @property
     def describe(self):
-        return pd.concat(self.description.values(), keys=self.description.keys(), sort=False).swaplevel(0, 1)
+        return pd.concat(self.description.values(), keys=self.description.keys()).swaplevel(0, 1)
 
     def find_invalids(self):
         invalid = gpd.GeoDataFrame(self.series[~self.series.is_valid])
@@ -158,6 +139,12 @@ class GeoReport:
             self.description['invalid_geometries'] = invalid
 
             return invalid
+
+    # TODO: introduce data function (similar to DataReport)
+    # def validate_single_geom_type(data):
+    #     geom_types = data.geom_type.unique()
+    #
+    #     return len(geom_types) == 1
 
     def find_outsiders(self, xmin, xmax, ymin, ymax):
         # TODO: assert bbox
