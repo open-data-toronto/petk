@@ -123,16 +123,19 @@ class DataReport:
 
 # TODO: verbose option that returns all feature and geometry
 class GeoReport:
-    def __init__(self, series, **kwargs):
-        self.series = series
+    def __init__(self, df, **kwargs):
+        self.df = df
         self.description = {}
 
     @property
     def describe(self):
-        return pd.concat(self.description.values(), keys=self.description.keys()).swaplevel(0, 1)
+        return pd.concat(
+                    self.description.values(),
+                    keys=self.description.keys()
+                ).reset_index().sort_values('level_1').set_index(['level_1', 'level_0'])
 
     def find_invalids(self):
-        invalid = gpd.GeoDataFrame(self.series[~self.series.is_valid])
+        invalid = gpd.GeoDataFrame(self.df[~self.df.is_valid]['geometry'])
 
         if not invalid.empty:
             invalid['notes'] = invalid['geometry'].apply(lambda x: explain_validity(x) if not x is None else 'Null geometry')
@@ -150,7 +153,7 @@ class GeoReport:
         # TODO: assert bbox
 
         # There has to be a better way to select outside of a bounding box...
-        invalid = gpd.GeoDataFrame(self.series.loc[~self.series.index.isin(self.series.cx[xmin:xmax, ymin:ymax].index)])
+        invalid = gpd.GeoDataFrame(self.df.loc[~self.df.index.isin(self.df.cx[xmin:xmax, ymin:ymax].index)]['geometry'])
 
         if not invalid.empty:
             invalid['notes'] = 'Outside of bbox({0}, {1}, {2}, {3})'.format(xmin, xmax, ymin, ymax)
@@ -159,14 +162,14 @@ class GeoReport:
             return invalid
 
     def find_slivers(self, area_thresh=constants.SLIVER_AREA, line_thresh=constants.SLIVER_LINE):
-        pieces = self.series.explode().to_crs({'init': 'epsg:2019', 'units': 'm'})
+        pieces = self.df.explode().to_crs({'init': 'epsg:2019', 'units': 'm'})
 
-        slivers = pieces.apply(self._is_sliver, args=(area_thresh, line_thresh))
+        slivers = pieces['geometry'].apply(self._is_sliver, args=(area_thresh, line_thresh))
         slivers = slivers[slivers].groupby(level=0).count()
 
         if not slivers.empty:
             slivers = gpd.GeoDataFrame({
-                'geometry': self.series,
+                'geometry': self.df['geometry'],
                 'notes': slivers.apply(lambda x: '{0} slivers found within geometry'.format(x))
             }).dropna()
             self.description['slivers'] = slivers
