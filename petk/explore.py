@@ -59,46 +59,6 @@ class DataReport:
 
         return base.append(additions).to_frame(name='values')
 
-    def validate(self, rules, verbose=False):
-        '''
-        Validate the data based on input rules for tabular data and geospatial attributes
-
-        Parameters:
-        rules (dict): A dictionary with data columns as keys and rules to validate for the column
-
-        Returns:
-        (DataFrame): Validation report
-        '''
-
-        validation = {}
-
-        for column, rule in rules.items():
-            dtype = utils.get_type(self.df[column])
-
-            if dtype in [constants.TYPE_GEO]:
-                for func, kwargs in rule.items():
-                    if isinstance(kwargs, bool) and kwargs:
-                        kwargs = {}
-
-                    validation[func] = getattr(self, func)(**kwargs)
-            else:
-                pass
-
-        validation = pd.concat(validation.values(), keys=validation.keys(), sort=False).reset_index()
-        validation.rename({
-            'level_0': 'function',
-            'level_1': 'index'
-        }, axis=1, inplace=True)
-
-        # Sort the MultiIndex by the record index then the issue found
-        validation = validation.sort_values('index').set_index(['index', 'function'])
-
-        # TODO: perform the merging on a function level instead here (so each function returns the full verbose description)
-        # if verbose:
-        #     desc = self.df.join(desc.drop('geometry', axis=1), how='inner')
-
-        return validation
-
     def describe(self, columns=[]):
         '''
         Profile columns by the data type
@@ -124,6 +84,43 @@ class DataReport:
                 self.description = pd.concat([self.description, self.get_description(c)], axis=1, sort=False)
 
         return self.description[columns]
+
+    def validate(self, rules, verbose=False):
+        '''
+        Validate the data based on input rules for tabular data and geospatial attributes
+
+        Parameters:
+        rules   (dict): A dictionary with data columns as keys and rules to validate for the column
+        verbose (bool): Identify if the results should be displayed with the original data
+
+        Returns:
+        (DataFrame): Validation report
+        '''
+
+        validation = {}
+
+        for column, rule in rules.items():
+            dtype = utils.get_type(self.df[column])
+
+            if dtype in [constants.TYPE_GEO]:
+                for func, kwargs in rule.items():
+                    if isinstance(kwargs, bool) and kwargs:
+                        kwargs = {}
+
+                    validation[func] = getattr(self, func)(**kwargs)
+            else:
+                pass
+
+        validation = pd.concat(validation.values(), keys=validation.keys(), sort=False).reset_index()
+        validation.columns = ['function', 'index', 'notes']
+
+        # Sort the MultiIndex by the record index then the issue found
+        validation = validation.sort_values('index').set_index(['index', 'function'])
+
+        if verbose:
+            validation = validation.join(self.df, how='inner')
+
+        return validation
 
     def get_description(self, column):
         '''
@@ -204,12 +201,12 @@ class DataReport:
         (DataFrame): Invalid geometries and the reason
         '''
 
-        invalid = gpd.GeoDataFrame(self.df[~self.df.is_valid])
+        issues = self.df[~self.df.is_valid]
 
-        if not invalid.empty:
-            invalid['notes'] = invalid['geometry'].apply(lambda x: explain_validity(x) if not x is None else 'Null geometry')
+        if not issues.empty:
+            invalids = issues['geometry'].apply(lambda x: explain_validity(x) if not x is None else 'Null geometry')
 
-        return invalid
+        return invalids
 
     def get_outsiders(self, xmin, xmax, ymin, ymax):
         '''
@@ -228,25 +225,27 @@ class DataReport:
         assert xmin < xmax and ymin < ymax, 'Invalid bounding box'
 
         # TODO: There has to be a better way to select outside of a bounding box...
-        invalid = gpd.GeoDataFrame(self.df.loc[~self.df.index.isin(self.df.cx[xmin:xmax, ymin:ymax].index)])
+        issues = self.df.loc[~self.df.index.isin(self.df.cx[xmin:xmax, ymin:ymax].index)]
 
-        if not invalid.empty:
-            invalid['notes'] = 'Outside of bbox({0}, {1}, {2}, {3})'.format(xmin, xmax, ymin, ymax)
+        if not issues.empty:
+            outsiders = issues['geometry'].apply(lambda x: 'Geometry outside of bbox({0}, {1}, {2}, {3})'.format(xmin, xmax, ymin, ymax))
 
-        return invalid
+        return outsiders
 
-    # TODO: Estimate projection or force projection input
-    def get_slivers(self, projection=2019, area_thresh=constants.SLIVER_AREA, length_thresh=constants.SLIVER_LINE):
+    def get_slivers(self, projection=None, area_thresh=constants.SLIVER_AREA, length_thresh=constants.SLIVER_LINE):
         '''
         Find the slivers within the geometries
 
         Parameters:
-        area_thresh (numeric): Threshold area for a Polygon to be considered a sliver
+        projection    (numeric): EPSG number for the geometry of the data
+        area_thresh   (numeric): Threshold area for a Polygon to be considered a sliver
         length_thresh (numeric): Threshold length for a Line to be considered a sliver
 
         Returns:
         (DataFrame): Sliver geometries
         '''
+
+        assert projection, 'Projection required'
 
         def is_sliver(x, area_thresh, length_thresh):
             if 'polygon' in x.geom_type.lower():
@@ -262,9 +261,7 @@ class DataReport:
         slivers = slivers[slivers].groupby(level=0).count()
 
         # if not slivers.empty:
-        slivers = gpd.GeoDataFrame({
-            'notes': slivers.apply(lambda x: '{0} slivers found within geometry'.format(x))
-        }).dropna().join(self.df)
+        slivers = slivers.apply(lambda x: '{0} slivers found within geometry'.format(x))
 
         return slivers
 
