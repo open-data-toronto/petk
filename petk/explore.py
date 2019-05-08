@@ -20,6 +20,13 @@ class DataReport:
 
     @property
     def describe(self):
+        '''
+        Concatenate the profiling done into a single report
+
+        Returns:
+        (DataFrame): Profiling report
+        '''
+
         desc = pd.DataFrame(self.description.values())
 
         if not desc.empty:
@@ -29,6 +36,13 @@ class DataReport:
 
     @property
     def introduce(self):
+        '''
+        Introduces the high level descriptions of the data
+
+        Returns:
+        (DataFrame): Introductory report
+        '''
+
         dd = pd.Series({
             'memory_usage': np.sum(self.df.memory_usage(deep=True)),
             'rows': len(self.df),
@@ -44,19 +58,41 @@ class DataReport:
         return dd.append(cd).to_frame(name='values')
 
     def profile_columns(self, columns=[]):
+        '''
+        Profile columns by the data type
+
+        Parameters:
+        columns (list or str): Identify the columns to profile
+
+        Returns:
+        (DataFrame): Profiling report
+        '''
+
         if not columns:
             columns = self.df.columns
         elif not isinstance(columns, list):
             columns = [columns]
 
+        # Validate if the column exists within the data
         miss = [x for x in columns if not x in self.df.columns]
         assert not miss, 'Columns "{0}" not in data'.format(', '.join(miss))
 
         for c in columns:
+            # Skip profiling if the column has already been profiled
             if c not in self.description.keys():
                 self.description[c] = self.get_description(c)
 
     def get_description(self, column):
+        '''
+        Profile a single data column
+
+        Parameters:
+        columns (str): Identify the column to profile
+
+        Returns:
+        (OrderedDict): Profile result
+        '''
+
         series = self.df[column]
 
         count = series.count() # ONLY non-NaN observations
@@ -116,6 +152,7 @@ class DataReport:
                         ('p_zeros', n_zeros / series.size)
                     ]
 
+        # OrderedDict used to fixed the DataFrame column orders
         return OrderedDict(description)
 
     # def get_frequent_values(self, top):
@@ -142,6 +179,13 @@ class GeoReport:
 
     @property
     def describe(self):
+        '''
+        Concatenate the profiling done into a single report
+
+        Returns:
+        (DataFrame): Profiling report
+        '''
+
         desc = pd.DataFrame()
 
         if self.description:
@@ -151,8 +195,11 @@ class GeoReport:
                 'level_1': 'index'
             }, axis=1, inplace=True)
 
+            # Sort the MultiIndex by the record index then the issue found
             desc = desc.sort_values('index').set_index(['index', 'issue'])
 
+        # Merge the profiling with original data
+        # TODO: perform the merging on a function level instead here (so each function returns the full verbose description)
         if self.verbose:
             desc = self.df.join(desc.drop('geometry', axis=1), how='inner')
 
@@ -160,6 +207,13 @@ class GeoReport:
 
     @property
     def introduce(self):
+        '''
+        Introduces the high level descriptions of the data
+
+        Returns:
+        (DataFrame): Introductory report
+        '''
+
         z = self.df.has_z.value_counts()
 
         base = pd.Series({
@@ -174,6 +228,13 @@ class GeoReport:
         return base.append(geom).to_frame(name='values')
 
     def find_invalids(self):
+        '''
+        Find the invalid geometries within the data
+
+        Returns:
+        (DataFrame): Invalid geometries and the reason
+        '''
+
         invalid = gpd.GeoDataFrame(self.df[~self.df.is_valid]['geometry'])
 
         if not invalid.empty:
@@ -183,9 +244,22 @@ class GeoReport:
             return invalid
 
     def find_outsiders(self, xmin, xmax, ymin, ymax):
+        '''
+        Find the geometries outside of a certain bounding box
+
+        Parameters:
+        xmin (numeric): Min X of the bounding box
+        xmax (numeric): Max X of the bounding box
+        ymin (numeric): Min Y of the bounding box
+        ymax (numeric): Max Y of the bounding box
+
+        Returns:
+        (DataFrame): Out of bound geometries
+        '''
+
         assert xmin < xmax and ymin < ymax, 'Invalid bounding box'
 
-        # There has to be a better way to select outside of a bounding box...
+        # TODO: There has to be a better way to select outside of a bounding box...
         invalid = gpd.GeoDataFrame(self.df.loc[~self.df.index.isin(self.df.cx[xmin:xmax, ymin:ymax].index)]['geometry'])
 
         if not invalid.empty:
@@ -195,6 +269,18 @@ class GeoReport:
             return invalid
 
     def find_slivers(self, area_thresh=constants.SLIVER_AREA, line_thresh=constants.SLIVER_LINE):
+        '''
+        Find the slivers within the geometries
+
+        Parameters:
+        area_thresh (numeric): Threshold area for a Polygon to be considered a sliver
+        line_thresh (numeric): Threshold length for a Line to be considered a sliver
+
+        Returns:
+        (DataFrame): Sliver geometries
+        '''
+
+        # TODO: How to project to the correct projection?
         pieces = self.df.explode().to_crs({'init': 'epsg:2019', 'units': 'm'})
 
         slivers = pieces['geometry'].apply(self._is_sliver, args=(area_thresh, line_thresh))
