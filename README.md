@@ -1,6 +1,6 @@
-# iotrans
+# Pandas Exploration Toolkit
 
-A toolkit for data exploration inspired by [pandas-profiling](https://github.com/pandas-profiling/pandas-profiling). 
+A toolkit to assist data exploration for both tabular and geospatial data. Inspired by [pandas-profiling](https://github.com/pandas-profiling/pandas-profiling).
 
 ## Planned Features for v1 Release:
 * Validation against rules for Tabular data
