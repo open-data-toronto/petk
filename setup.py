@@ -9,10 +9,13 @@ setup(
     author='Open Data Toronto',
     author_email='opendata@toronto.ca',
     packages=['petk'],
-    url='',
+    url='https://github.com/open-data-toronto/petk',
     license='MIT',
-    description='',
-    install_requires=[],
+    description='A toolkit to assist data exploration for both tabular and geospatial data',
+    long_description=long_description,
+    install_requires=[
+        'geopandas>=0.4.0'
+    ],
     include_package_data=True,
     classifiers=[
         'Development Status :: 4 - Beta',
