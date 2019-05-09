@@ -5,7 +5,7 @@ import warnings
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import matplotlib
+# import matplotlib
 
 import petk.constants as constants
 import petk.tools as tools
