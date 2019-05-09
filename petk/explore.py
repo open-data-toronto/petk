@@ -2,6 +2,9 @@ from collections import OrderedDict
 
 from shapely.validation import explain_validity
 
+import importlib
+import warnings
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -9,6 +12,11 @@ import matplotlib
 
 import petk.constants as constants
 import petk.utils as utils
+
+has_geopy = not importlib.util.find_spec("geopy") is None
+if has_geopy:
+    from geopandas.tools import reverse_geocode
+    from shapely.geometry import MultiPoint
 
 
 class DataReport:
@@ -45,9 +53,12 @@ class DataReport:
 
         if isinstance(self.df, gpd.GeoDataFrame):
             has_z = self.df.has_z.value_counts()
+            centroid_loc = ', '.join(reverse_geocode(MultiPoint(self.df.centroid).centroid)['address'][0].split(', ')[1:]) if has_geopy else None
+
             additions.append(
                 pd.Series({
                     ('geospatial', 'crs'): self.df.crs['init'],
+                    ('geospatial', 'centroid_location'): centroid_loc,
                     ('geospatial', 'bounds'): self.df.total_bounds,
                     ('geospatial', '3d_shapes'): has_z[True] if True in has_z.index else 0
                 })
@@ -100,6 +111,10 @@ class DataReport:
         validation = {}
 
         for column, rule in rules.items():
+            if column not in self.df.columns:
+                warnings.warn('Column {0} not found in data'.format(column), stacklevel=2)
+                continue
+
             dtype = utils.get_type(self.df[column])
 
             if dtype in [constants.TYPE_GEO]:
@@ -107,18 +122,22 @@ class DataReport:
                     if isinstance(kwargs, bool) and kwargs:
                         kwargs = {}
 
-                    validation[func] = getattr(self, func)(**kwargs)
+                    result = getattr(self, func)(**kwargs)
+
+                    if result:
+                        validation[func] = result
             else:
                 pass
 
-        validation = pd.concat(validation.values(), keys=validation.keys(), sort=False).reset_index()
-        validation.columns = ['function', 'index', 'notes']
+        if validation:
+            validation = pd.concat(validation.gdfvalues(), keys=validation.keys(), sort=False).reset_index()
+            validation.columns = ['function', 'index', 'notes']
 
-        # Sort the MultiIndex by the record index then the issue found
-        validation = validation.sort_values('index').set_index(['index', 'function'])
+            # Sort the MultiIndex by the record index then the issue found
+            validation = validation.sort_values('index').set_index(['index', 'function'])
 
-        if verbose:
-            validation = validation.join(self.df, how='inner')
+            if verbose:
+                validation = validation.join(self.df, how='inner')
 
         return validation
 
@@ -201,12 +220,10 @@ class DataReport:
         (DataFrame): Invalid geometries and the reason
         '''
 
-        issues = self.df[~self.df.is_valid]
+        invalids = self.df[~self.df.is_valid]
 
-        if not issues.empty:
-            invalids = issues['geometry'].apply(lambda x: explain_validity(x) if not x is None else 'Null geometry')
-
-        return invalids
+        if not invalids.empty:
+            return invalids['geometry'].apply(lambda x: explain_validity(x) if not x is None else 'Null geometry')
 
     def get_outsiders(self, xmin, xmax, ymin, ymax):
         '''
@@ -225,12 +242,10 @@ class DataReport:
         assert xmin < xmax and ymin < ymax, 'Invalid bounding box'
 
         # TODO: There has to be a better way to select outside of a bounding box...
-        issues = self.df.loc[~self.df.index.isin(self.df.cx[xmin:xmax, ymin:ymax].index)]
+        outsiders = self.df.loc[~self.df.index.isin(self.df.cx[xmin:xmax, ymin:ymax].index)]
 
-        if not issues.empty:
-            outsiders = issues['geometry'].apply(lambda x: 'Geometry outside of bbox({0}, {1}, {2}, {3})'.format(xmin, xmax, ymin, ymax))
-
-        return outsiders
+        if not outsiders.empty:
+            return outsiders['geometry'].apply(lambda x: 'Geometry outside of bbox({0}, {1}, {2}, {3})'.format(xmin, xmax, ymin, ymax))
 
     def get_slivers(self, projection=None, area_thresh=constants.SLIVER_AREA, length_thresh=constants.SLIVER_LINE):
         '''
@@ -260,10 +275,8 @@ class DataReport:
         slivers = pieces['geometry'].apply(is_sliver, args=(area_thresh, length_thresh))
         slivers = slivers[slivers].groupby(level=0).count()
 
-        # if not slivers.empty:
-        slivers = slivers.apply(lambda x: '{0} slivers found within geometry'.format(x))
-
-        return slivers
+        if not slivers.empty:
+            return slivers.apply(lambda x: '{0} slivers found within geometry'.format(x))
 
     # def get_frequent_values(self, top):
     #     return series.value_counts(dropna=False).head(top)
