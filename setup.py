@@ -1,7 +1,7 @@
-try:
-    from setuptools import setup
-except ImportError:
-    from distutils.core import setup
+from setuptools import setup
+
+with open('README.md', 'r') as f:
+    long_description = f.read()
 
 setup(
     name='petk',
@@ -15,7 +15,7 @@ setup(
     install_requires=[],
     include_package_data=True,
     classifiers=[
-        'Development Status :: 1 - Planning',
+        'Development Status :: 4 - Beta',
         'Environment :: Console',
         'Framework :: IPython',
         'Intended Audience :: Developers',
