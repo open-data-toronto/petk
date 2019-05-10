@@ -18,7 +18,7 @@ def get_description(series, name=''):
     columns (str): Identify the column to profile
 
     Returns:
-    (OrderedDict): Profile result
+    (DataFrame): Profile result
     '''
 
     count = series.count() # ONLY non-NaN observations
@@ -76,7 +76,6 @@ def get_description(series, name=''):
                     'p_zeros': n_zeros / series.size
                 })
 
-    # OrderedDict used to fixed the DataFrame column orders
     return pd.DataFrame(pd.Series(description, name=name))
 
 def get_invalids(data):
