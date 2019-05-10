@@ -5,7 +5,7 @@ with open('README.md', 'r') as f:
 
 setup(
     name='petk',
-    version='0.0.1',
+    version='0.0.2',
     author='Open Data Toronto',
     author_email='opendata@toronto.ca',
     packages=['petk'],
