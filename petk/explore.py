@@ -1,4 +1,4 @@
-from collections import OrderedDict
+from shapely.geometry import MultiPoint
 
 import warnings
 
