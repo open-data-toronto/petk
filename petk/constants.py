@@ -1,3 +1,5 @@
+import numpy as np
+
 TYPE_BOOL = 'BOOLEAN'
 TYPE_DATE = 'DATE'
 TYPE_STR = 'STRING'
@@ -9,5 +11,5 @@ TYPE_GEO = 'GEOMETRY'
 TYPE_UNIQUE = 'UNIQUE'
 TYPE_UNSUPPORTED = 'UNSUPPORTED'
 
-SLIVER_AREA = 1
-SLIVER_LINE = 1
+NULLS = [None, np.nan, 'null', '']
+SHAPE_BOUNDS = [1, np.nan]

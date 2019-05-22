@@ -10,13 +10,13 @@ import pandas as pd
 import petk.constants as constants
 import petk.tools as tools
 
-
 class DataReport:
-    def __init__(self, data, verbose=False):
+    def __init__(self, data, schema={}, verbose=False):
         self.df = data
         self.df.index.name = 'index'
 
         self.description = pd.DataFrame()
+        self.schema = schema
 
     @property
     def introduce(self):
@@ -84,11 +84,18 @@ class DataReport:
 
         for c in columns:
             if c not in self.description.columns:
-                self.description = pd.concat([self.description, tools.get_description(self.df[c], name=c)], axis=1, sort=False)
+                self.description = pd.concat(
+                    [
+                        self.description,
+                        tools.get_description(self.df[c], self.schema[c]['nulls'], name=c)
+                    ],
+                    axis=1,
+                    sort=False
+                )
 
         return self.description[columns]
 
-    def validate(self, rules, verbose=False):
+    def validate(self, verbose=False):
         '''
         Validate the data based on input rules for tabular data and geospatial attributes
 
@@ -100,26 +107,14 @@ class DataReport:
         (DataFrame): Validation report
         '''
 
-        validation = {}
+        result = {}
 
-        for column, rule in rules.items():
-            if column not in self.df.columns:
-                warnings.warn('Column {0} not found in data'.format(column), stacklevel=2)
-                continue
+        for column, checks in self.schema.items():
+            validations = np.intersect1d(checks.keys(), ['type', 'range', 'bounding_box'])
 
-            dtype = tools.get_type(self.df[column])
-
-            if dtype in [constants.TYPE_GEO]:
-                for func, kwargs in rule.items():
-                    if isinstance(kwargs, bool) and kwargs:
-                        kwargs = {}
-
-                    result = getattr(tools, func)(self.df, **kwargs)
-
-                    if result is not None:
-                        validation[func] = result
-            else:
-                pass
+            # TODO: THIS WILL OVERWRITE
+            for v in validations:
+                result[v] = getattr(validate, v)(self.df[column], **checks)
 
         if validation:
             validation = pd.concat(validation.values(), keys=validation.keys(), sort=False).reset_index()
