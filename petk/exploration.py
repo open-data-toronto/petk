@@ -9,14 +9,16 @@ import pandas as pd
 
 import petk.constants as constants
 import petk.tools as tools
+import petk.validation as validation
 
 
 class DataReport:
-    def __init__(self, data, verbose=False):
+    def __init__(self, data, schema={}, verbose=False):
         self.df = data
         self.df.index.name = 'index'
 
         self.description = pd.DataFrame()
+        self.schema = schema
 
     @property
     def introduce(self):
@@ -27,12 +29,21 @@ class DataReport:
         (DataFrame): Introductory report
         '''
 
+        null_counts = []
+        for col in self.df.columns:
+            missing = constants.NULLS.copy()
+
+            if tools.key_exists(self.schema, col, 'nulls'):
+                missing += self.schema[col]['nulls']
+
+            null_counts.append(self.df[col][self.df[col].isin([missing])].count())
+
         base = pd.Series({
             ('basic', 'memory_usage'): np.sum(self.df.memory_usage(deep=True)),
             ('basic', 'rows'): len(self.df),
             ('basic', 'columns'): len(self.df.columns),
             ('observations', 'total'): np.prod(self.df.shape),
-            ('observations', 'missing'): np.sum(len(self.df) - self.df.count())
+            ('observations', 'missing'): null_counts.sum()
         })
 
         additions = []
@@ -84,11 +95,23 @@ class DataReport:
 
         for c in columns:
             if c not in self.description.columns:
-                self.description = pd.concat([self.description, tools.get_description(self.df[c], name=c)], axis=1, sort=False)
+                missing = constants.NULLS.copy()
+
+                if tools.key_exists(self.schema, c, 'nulls'):
+                    missing += self.schema[c]['nulls']
+
+                self.description = pd.concat(
+                    [
+                        self.description,
+                        tools.get_description(self.df[c], missing, name=c)
+                    ],
+                    axis=1,
+                    sort=False
+                )
 
         return self.description[columns]
 
-    def validate(self, rules, verbose=False):
+    def validate(self, verbose=False):
         '''
         Validate the data based on input rules for tabular data and geospatial attributes
 
@@ -100,35 +123,33 @@ class DataReport:
         (DataFrame): Validation report
         '''
 
-        validation = {}
+        results = {}
 
-        for column, rule in rules.items():
-            if column not in self.df.columns:
-                warnings.warn('Column {0} not found in data'.format(column), stacklevel=2)
-                continue
+        for column, checks in self.schema.items():
+            audit = np.intersect1d(
+                list(checks.keys()),
+                [method for method in dir(validation) if callable(getattr(validation, method))]
+            )
 
-            dtype = tools.get_type(self.df[column])
+            if column == 'geometry':
+                results['geospatial'] = [validation.geospatial(self.df[column])]
 
-            if dtype in [constants.TYPE_GEO]:
-                for func, kwargs in rule.items():
-                    if isinstance(kwargs, bool) and kwargs:
-                        kwargs = {}
+            for v in audit:
+                issues = getattr(validation, v)(self.df[column], checks[v])
 
-                    result = getattr(tools, func)(self.df, **kwargs)
+                if issues is not None:
+                    if v not in results:
+                        results[v] = []
 
-                    if result is not None:
-                        validation[func] = result
-            else:
-                pass
+                    results[v].append(issues)
 
-        if validation:
-            validation = pd.concat(validation.values(), keys=validation.keys(), sort=False).reset_index()
-            validation.columns = ['function', 'index', 'notes']
+        if results:
+            results = pd.concat([pd.concat(r, keys=[x.name for x in r]) for r in results.values()], keys=results.keys()).to_frame().reset_index()
 
-            # Sort the MultiIndex by the record index then the issue found
-            validation = validation.sort_values('index').set_index(['index', 'function'])
+            results.columns = ['function', 'column', 'index', 'notes']
+            results = results.sort_values('index').set_index(['index', 'column', 'function'])
 
             if verbose:
-                validation = validation.join(self.df, how='inner')
+                results = results.join(self.df, how='inner')
 
-        return validation
+        return results
