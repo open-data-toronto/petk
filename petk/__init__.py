@@ -1,1 +1,1 @@
-from .explore import DataReport
+from .exploration import DataReport

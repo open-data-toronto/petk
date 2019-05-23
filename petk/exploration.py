@@ -9,6 +9,8 @@ import pandas as pd
 
 import petk.constants as constants
 import petk.tools as tools
+import petk.validation as validation
+
 
 class DataReport:
     def __init__(self, data, schema={}, verbose=False):
@@ -27,12 +29,21 @@ class DataReport:
         (DataFrame): Introductory report
         '''
 
+        null_counts = []
+        for col in self.df.columns:
+            missing = constants.NULLS.copy()
+
+            if tools.key_exists(self.schema, col, 'nulls'):
+                missing += self.schema[col]['nulls']
+
+            null_counts.append(self.df[col][self.df[col].isin([missing])].count())
+
         base = pd.Series({
             ('basic', 'memory_usage'): np.sum(self.df.memory_usage(deep=True)),
             ('basic', 'rows'): len(self.df),
             ('basic', 'columns'): len(self.df.columns),
             ('observations', 'total'): np.prod(self.df.shape),
-            ('observations', 'missing'): np.sum(len(self.df) - self.df.count())
+            ('observations', 'missing'): null_counts.sum()
         })
 
         additions = []
@@ -84,7 +95,10 @@ class DataReport:
 
         for c in columns:
             if c not in self.description.columns:
-                missing = self.schema[c]['nulls'] if tools.key_exists(self.schema, c, 'nulls') else constants.NULLS
+                missing = constants.NULLS.copy()
+
+                if tools.key_exists(self.schema, c, 'nulls'):
+                    missing += self.schema[c]['nulls']
 
                 self.description = pd.concat(
                     [
@@ -109,23 +123,33 @@ class DataReport:
         (DataFrame): Validation report
         '''
 
-        result = {}
+        results = {}
 
         for column, checks in self.schema.items():
-            validations = np.intersect1d(checks.keys(), validate.methods)
+            audit = np.intersect1d(
+                list(checks.keys()),
+                [method for method in dir(validation) if callable(getattr(validation, method))]
+            )
 
-            # TODO: THIS WILL OVERWRITE
-            for v in validations:
-                result[v] = getattr(validate, v)(self.df[column], **checks)
+            if column == 'geometry':
+                results['geospatial'] = [validation.geospatial(self.df[column])]
 
-        if validation:
-            validation = pd.concat(validation.values(), keys=validation.keys(), sort=False).reset_index()
-            validation.columns = ['function', 'index', 'notes']
+            for v in audit:
+                issues = getattr(validation, v)(self.df[column], checks[v])
 
-            # Sort the MultiIndex by the record index then the issue found
-            validation = validation.sort_values('index').set_index(['index', 'function'])
+                if issues is not None:
+                    if v not in results:
+                        results[v] = []
+
+                    results[v].append(issues)
+
+        if results:
+            results = pd.concat([pd.concat(r, keys=[x.name for x in r]) for r in results.values()], keys=results.keys()).to_frame().reset_index()
+
+            results.columns = ['function', 'column', 'index', 'notes']
+            results = results.sort_values('index').set_index(['index', 'column', 'function'])
 
             if verbose:
-                validation = validation.join(self.df, how='inner')
+                results = results.join(self.df, how='inner')
 
-        return validation
+        return results

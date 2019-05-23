@@ -19,12 +19,11 @@ def get_description(series, nulls=constants.NULLS, name=''):
     (DataFrame): Profile result
     '''
 
-    count = series[~series.isin([nulls])].count() # ONLY non-NaN observations
+    count = series[~series.isin(nulls)].count() # ONLY non-NaN observations
     dtype = get_type(series)
 
     description = {
-        'type': dtype,
-        'column': series.name,
+        'content_type': dtype,
         'memory_usage': series.memory_usage(),
         'count': count,
         'p_null': (series.size - count) / series.size,
@@ -93,20 +92,25 @@ def get_type(series):
         distinct_count = series.nunique()
         value_count = series.nunique(dropna=False)
 
+        modifier = ''
         if value_count == 1 and distinct_count == 0:
-            return constants.TYPE_EMPTY
+            modifier = constants.TYPE_EMPTY
         elif distinct_count == 1:
-            return constants.TYPE_CONST
-        elif ptypes.is_bool_dtype(series) or (distinct_count == 2 and pd.api.types.is_numeric_dtype(series)):
-            return constants.TYPE_BOOL
-        elif ptypes.is_datetime64_dtype(series):
-            return constants.TYPE_DATE
-        elif ptypes.is_numeric_dtype(series):
-            return constants.TYPE_NUM
+            modifier = constants.TYPE_CONST
         elif value_count == len(series):
-            return constants.TYPE_UNIQUE
+            modifier = constants.TYPE_UNIQUE
+
+        dtype = ''
+        if ptypes.is_bool_dtype(series) or (distinct_count == 2 and pd.api.types.is_numeric_dtype(series)):
+            dtype = constants.TYPE_BOOL
+        elif ptypes.is_datetime64_dtype(series):
+            dtype = constants.TYPE_DATE
+        elif ptypes.is_numeric_dtype(series):
+            dtype = constants.TYPE_NUM
         else:
-            return constants.TYPE_STR
+            dtype = constants.TYPE_STR
+
+        return ' '.join([modifier, dtype]).strip()
     except:
         # eg. 2D series
         return constants.TYPE_UNSUPPORTED
