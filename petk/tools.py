@@ -124,3 +124,14 @@ def is_sliver(x, threshold):
         return x.length < threshold
     else:   # Points
         return False
+
+def key_exists(content, *keys):
+    _values = content
+
+    for k in keys:
+        try:
+            _values = _values[k]
+        except KeyError:
+            return False
+
+    return True

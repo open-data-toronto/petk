@@ -84,10 +84,12 @@ class DataReport:
 
         for c in columns:
             if c not in self.description.columns:
+                missing = self.schema[c]['nulls'] if tools.key_exists(self.schema, c, 'nulls') else constants.NULLS
+
                 self.description = pd.concat(
                     [
                         self.description,
-                        tools.get_description(self.df[c], self.schema[c]['nulls'], name=c)
+                        tools.get_description(self.df[c], missing, name=c)
                     ],
                     axis=1,
                     sort=False
@@ -110,7 +112,7 @@ class DataReport:
         result = {}
 
         for column, checks in self.schema.items():
-            validations = np.intersect1d(checks.keys(), ['type', 'range', 'bounding_box'])
+            validations = np.intersect1d(checks.keys(), validate.methods)
 
             # TODO: THIS WILL OVERWRITE
             for v in validations:
