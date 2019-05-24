@@ -110,8 +110,6 @@ class DataReport:
 
         columns = self._find_columns(columns)
 
-        boom = []
-
         for col, checks in self.schema.items():
             if col not in columns or ('column' in self.validation.columns and col in self.validation['column'].values):
                 continue
