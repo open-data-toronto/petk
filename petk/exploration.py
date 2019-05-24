@@ -33,6 +33,9 @@ class DataReport:
         (DataFrame): Introductory report
         '''
 
+        # TODO: if as_dict create return calc. steps as a dict as oppose to merging to df then convert to df?
+
+        # TODO: THIS SLOW
         null_counts = []
         for col in self.df.columns:
             missing = constants.NULLS.copy()
