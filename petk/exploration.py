@@ -90,15 +90,10 @@ class DataReport:
 
         for c in columns:
             if c not in self.description.columns:
-                missing = constants.NULLS.copy()
-
-                if tools.key_exists(self.schema, c, 'nulls'):
-                    missing += self.schema[c]['nulls']
-
                 self.description = pd.concat(
                     [
                         self.description,
-                        tools.get_description(self.df[c], missing, name=c)
+                        tools.get_description(self.df[c], self.schema[c]['nulls'], name=c)
                     ],
                     axis=1,
                     sort=False
