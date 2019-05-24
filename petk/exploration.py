@@ -19,8 +19,10 @@ class DataReport:
         self.df = data
         self.df.index.name = 'index'
 
-        self.description = pd.DataFrame()
         self.schema = self.init_schema(schema)
+
+        self.description = pd.DataFrame()
+        self.validation = pd.DataFrame()
 
         self.as_dict = as_dict
 
@@ -79,14 +81,7 @@ class DataReport:
         (DataFrame): Profiling report
         '''
 
-        if not columns:
-            columns = self.df.columns
-        elif not isinstance(columns, list):
-            columns = [columns]
-
-        # Validate if the column exists within the data
-        miss = [x for x in columns if not x in self.df.columns]
-        assert not miss, 'Columns "{0}" not in data'.format(', '.join(miss))
+        columns = self._find_columns(columns)
 
         for c in columns:
             if c not in self.description.columns:
@@ -115,15 +110,12 @@ class DataReport:
 
         # TODO: Cache validations similar to descriptions
 
-        results = {}
+        columns = self._find_columns(columns)
 
-        if not columns:
-            columns = self.df.columns
-        elif not isinstance(columns, list):
-            columns = [columns]
+        boom = []
 
         for col, checks in self.schema.items():
-            if col not in columns:
+            if col not in columns or ('column' in self.validation.columns and col in self.validation['column'].values):
                 continue
 
             audit = np.intersect1d(
@@ -131,28 +123,36 @@ class DataReport:
                 [method for method in dir(validation) if callable(getattr(validation, method))]
             )
 
+            results = {}
+
             if col == 'geometry':
-                results['geospatial'] = [validation.geospatial(self.df[col])]
+                issues = validation.geospatial(self.df[col])
+
+                if issues is not None:
+                    results['geospatial'] = issues
 
             for v in audit:
                 issues = getattr(validation, v)(self.df[col], checks[v])
 
                 if issues is not None:
-                    if v not in results:
-                        results[v] = []
+                    results[v] = issues
 
-                    results[v].append(issues)
+            vali = pd.concat(results.values(), keys=results.keys()).to_frame().reset_index()
+            vali.columns = ['function', 'index', 'notes']
+            vali['column'] = col
 
-        if results:
-            results = pd.concat([pd.concat(r, keys=[x.name for x in r]) for r in results.values()], keys=results.keys()).to_frame().reset_index()
+            self.validation = pd.concat([self.validation, vali])
 
-            results.columns = ['function', 'column', 'index', 'notes']
-            results = results.sort_values('index').set_index(['index', 'column', 'function'])
-
-            if verbose:
-                results = results.join(self.df, how='inner')
-
-        return self._format_results(results)
+        return self._format_results(
+            self.validation[
+                self.validation['column'].isin(columns)
+            ].sort_values(
+                ['index', 'function']
+            ).set_index(
+                ['index', 'column', 'function']
+            ),
+            verbose=verbose
+        )
 
     def init_schema(self, schema):
         base = {
@@ -172,7 +172,21 @@ class DataReport:
 
         return base
 
-    def _format_results(self, results):
+    def _find_columns(self, columns):
+        if not columns:
+            columns = self.df.columns
+        elif not isinstance(columns, list):
+            columns = [columns]
+
+        missing = [x for x in columns if not x in self.df.columns]
+        assert not missing, 'Columns "{0}" not in data'.format(', '.join(missing))
+
+        return columns
+
+    def _format_results(self, results, verbose=False):
+        if verbose:
+            results = results.join(self.df)
+
         if self.as_dict:
             if isinstance(results.index, pd.MultiIndex):
                 records = {}
