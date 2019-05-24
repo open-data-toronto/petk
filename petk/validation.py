@@ -21,7 +21,6 @@ def geospatial(series):
 
 def range(series, range):
     dtype = tools.get_type(series)
-    print(series.name, dtype)
 
     if any(dtype in type for type in [constants.TYPE_DATE, constants.TYPE_NUM]):
         lower, upper = range
