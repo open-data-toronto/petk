@@ -108,8 +108,6 @@ class DataReport:
         (DataFrame): Validation report
         '''
 
-        # TODO: Cache validations similar to descriptions
-
         columns = self._find_columns(columns)
 
         boom = []
