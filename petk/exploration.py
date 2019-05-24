@@ -13,14 +13,14 @@ import petk.validation as validation
 
 
 class DataReport:
+    # TODO: init schema when schema is update separately
+
     def __init__(self, data, schema={}, as_dict=False):
         self.df = data
         self.df.index.name = 'index'
 
         self.description = pd.DataFrame()
-        self.schema = schema
-
-        # TODO: Build basic schema if none provided
+        self.schema = self.init_schema(schema)
 
         self.as_dict = as_dict
 
@@ -33,24 +33,12 @@ class DataReport:
         (DataFrame): Introductory report
         '''
 
-        # TODO: if as_dict create return calc. steps as a dict as oppose to merging to df then convert to df?
-
-        # TODO: THIS SLOW
-        null_counts = []
-        for col in self.df.columns:
-            missing = constants.NULLS.copy()
-
-            if tools.key_exists(self.schema, col, 'nulls'):
-                missing += self.schema[col]['nulls']
-
-            null_counts.append(self.df[col][self.df[col].isin([missing])].count())
-
         base = pd.Series({
             ('basic', 'memory_usage'): np.sum(self.df.memory_usage(deep=True)),
             ('basic', 'rows'): len(self.df),
             ('basic', 'columns'): len(self.df.columns),
             ('observations', 'total'): np.prod(self.df.shape),
-            ('observations', 'missing'): np.sum(null_counts)
+            ('observations', 'missing'): np.sum([self.df[col][self.df[col].isin([self.schema[col]['nulls']])].count() for col in self.df.columns])
         })
 
         additions = []
@@ -171,28 +159,43 @@ class DataReport:
 
         return self._format_results(results)
 
-    def to_dict(self, data):
-        if isinstance(data.index, pd.MultiIndex):
-            records = {}
+    def init_schema(self, schema):
+        base = {
+            col: {
+                'nulls': constants.NULLS
+            } for col in self.df.columns
+        }
 
-            for idx, row in data.iterrows():
-                _values = records
+        for col, dd in schema.items():
+            assert col in base, 'Invalid input schema, column {0} does not exist in data'.format(col)
 
-                for k in idx:
-                    if not tools.key_exists(_values, k):
-                        _values[k] = {}
+            for k, v in dd.items():
+                if k in ['nulls']:
+                    base[col][k] = set(v + base[col][k])
+                else:
+                    base[col][k] = v
 
-                    if k != idx[-1]:
-                        _values = _values[k]
-
-                _values[idx[-1]] = row.to_dict() if row.size > 1 else row.values[0]
-        else:
-            records = data.to_dict()
-
-        return records
+        return base
 
     def _format_results(self, results):
         if self.as_dict:
-            return self.to_dict(results)
+            if isinstance(results.index, pd.MultiIndex):
+                records = {}
+
+                for idx, row in results.iterrows():
+                    _values = records
+
+                    for k in idx:
+                        if not tools.key_exists(_values, k):
+                            _values[k] = {}
+
+                        if k != idx[-1]:
+                            _values = _values[k]
+
+                    _values[idx[-1]] = row.to_dict() if row.size > 1 else row.values[0]
+
+                return records
+            else:
+                return data.to_dict()
 
         return results
