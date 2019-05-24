@@ -13,12 +13,16 @@ import petk.validation as validation
 
 
 class DataReport:
-    def __init__(self, data, schema={}, verbose=False):
+    def __init__(self, data, schema={}, as_dict=False):
         self.df = data
         self.df.index.name = 'index'
 
         self.description = pd.DataFrame()
         self.schema = schema
+
+        # TODO: Build basic schema if none provided
+
+        self.as_dict = as_dict
 
     @property
     def introduce(self):
@@ -43,7 +47,7 @@ class DataReport:
             ('basic', 'rows'): len(self.df),
             ('basic', 'columns'): len(self.df.columns),
             ('observations', 'total'): np.prod(self.df.shape),
-            ('observations', 'missing'): null_counts.sum()
+            ('observations', 'missing'): np.sum(null_counts)
         })
 
         additions = []
@@ -71,7 +75,7 @@ class DataReport:
             geom_types.index = [('geospatial', '{0}s'.format(x.lower())) for x in geom_types.index]
             additions.append(geom_types)
 
-        return base.append(additions).to_frame(name='values')
+        return self._format_results(base.append(additions).to_frame(name='values'))
 
     def describe(self, columns=[]):
         '''
@@ -109,9 +113,9 @@ class DataReport:
                     sort=False
                 )
 
-        return self.description[columns]
+        return self._format_results(self.description[columns])
 
-    def validate(self, verbose=False):
+    def validate(self, columns=[], verbose=False):
         '''
         Validate the data based on input rules for tabular data and geospatial attributes
 
@@ -123,19 +127,29 @@ class DataReport:
         (DataFrame): Validation report
         '''
 
+        # TODO: Cache validations similar to descriptions
+
         results = {}
 
-        for column, checks in self.schema.items():
+        if not columns:
+            columns = self.df.columns
+        elif not isinstance(columns, list):
+            columns = [columns]
+
+        for col, checks in self.schema.items():
+            if col not in columns:
+                continue
+
             audit = np.intersect1d(
                 list(checks.keys()),
                 [method for method in dir(validation) if callable(getattr(validation, method))]
             )
 
-            if column == 'geometry':
-                results['geospatial'] = [validation.geospatial(self.df[column])]
+            if col == 'geometry':
+                results['geospatial'] = [validation.geospatial(self.df[col])]
 
             for v in audit:
-                issues = getattr(validation, v)(self.df[column], checks[v])
+                issues = getattr(validation, v)(self.df[col], checks[v])
 
                 if issues is not None:
                     if v not in results:
@@ -151,5 +165,31 @@ class DataReport:
 
             if verbose:
                 results = results.join(self.df, how='inner')
+
+        return self._format_results(results)
+
+    def to_dict(self, data):
+        if isinstance(data.index, pd.MultiIndex):
+            records = {}
+
+            for idx, row in data.iterrows():
+                _values = records
+
+                for k in idx:
+                    if not tools.key_exists(_values, k):
+                        _values[k] = {}
+
+                    if k != idx[-1]:
+                        _values = _values[k]
+
+                _values[idx[-1]] = row.to_dict() if row.size > 1 else row.values[0]
+        else:
+            records = data.to_dict()
+
+        return records
+
+    def _format_results(self, results):
+        if self.as_dict:
+            return self.to_dict(results)
 
         return results
