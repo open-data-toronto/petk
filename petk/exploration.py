@@ -13,12 +13,18 @@ import petk.validation as validation
 
 
 class DataReport:
-    def __init__(self, data, schema={}, verbose=False):
+    # TODO: init schema when schema is update separately
+
+    def __init__(self, data, schema={}, as_dict=False):
         self.df = data
         self.df.index.name = 'index'
 
+        self.schema = self.init_schema(schema)
+
         self.description = pd.DataFrame()
-        self.schema = schema
+        self.validation = pd.DataFrame()
+
+        self.as_dict = as_dict
 
     @property
     def introduce(self):
@@ -29,21 +35,12 @@ class DataReport:
         (DataFrame): Introductory report
         '''
 
-        null_counts = []
-        for col in self.df.columns:
-            missing = constants.NULLS.copy()
-
-            if tools.key_exists(self.schema, col, 'nulls'):
-                missing += self.schema[col]['nulls']
-
-            null_counts.append(self.df[col][self.df[col].isin([missing])].count())
-
         base = pd.Series({
             ('basic', 'memory_usage'): np.sum(self.df.memory_usage(deep=True)),
             ('basic', 'rows'): len(self.df),
             ('basic', 'columns'): len(self.df.columns),
             ('observations', 'total'): np.prod(self.df.shape),
-            ('observations', 'missing'): null_counts.sum()
+            ('observations', 'missing'): np.sum([self.df[col][self.df[col].isin([self.schema[col]['nulls']])].count() for col in self.df.columns])
         })
 
         additions = []
@@ -71,7 +68,7 @@ class DataReport:
             geom_types.index = [('geospatial', '{0}s'.format(x.lower())) for x in geom_types.index]
             additions.append(geom_types)
 
-        return base.append(additions).to_frame(name='values')
+        return self._format_results(base.append(additions).to_frame(name='values'))
 
     def describe(self, columns=[]):
         '''
@@ -84,34 +81,22 @@ class DataReport:
         (DataFrame): Profiling report
         '''
 
-        if not columns:
-            columns = self.df.columns
-        elif not isinstance(columns, list):
-            columns = [columns]
-
-        # Validate if the column exists within the data
-        miss = [x for x in columns if not x in self.df.columns]
-        assert not miss, 'Columns "{0}" not in data'.format(', '.join(miss))
+        columns = self._find_columns(columns)
 
         for c in columns:
             if c not in self.description.columns:
-                missing = constants.NULLS.copy()
-
-                if tools.key_exists(self.schema, c, 'nulls'):
-                    missing += self.schema[c]['nulls']
-
                 self.description = pd.concat(
                     [
                         self.description,
-                        tools.get_description(self.df[c], missing, name=c)
+                        tools.get_description(self.df[c], self.schema[c]['nulls'], name=c)
                     ],
                     axis=1,
                     sort=False
                 )
 
-        return self.description[columns]
+        return self._format_results(self.description[columns])
 
-    def validate(self, verbose=False):
+    def validate(self, columns=[], verbose=False):
         '''
         Validate the data based on input rules for tabular data and geospatial attributes
 
@@ -123,33 +108,99 @@ class DataReport:
         (DataFrame): Validation report
         '''
 
-        results = {}
+        columns = self._find_columns(columns)
 
-        for column, checks in self.schema.items():
+        for col, checks in self.schema.items():
+            if col not in columns or ('column' in self.validation.columns and col in self.validation['column'].values):
+                continue
+
             audit = np.intersect1d(
                 list(checks.keys()),
                 [method for method in dir(validation) if callable(getattr(validation, method))]
             )
 
-            if column == 'geometry':
-                results['geospatial'] = [validation.geospatial(self.df[column])]
+            results = {}
 
-            for v in audit:
-                issues = getattr(validation, v)(self.df[column], checks[v])
+            if col == 'geometry':
+                issues = validation.geospatial(self.df[col])
 
                 if issues is not None:
-                    if v not in results:
-                        results[v] = []
+                    results['geospatial'] = issues
 
-                    results[v].append(issues)
+            for v in audit:
+                issues = getattr(validation, v)(self.df[col], checks[v])
 
-        if results:
-            results = pd.concat([pd.concat(r, keys=[x.name for x in r]) for r in results.values()], keys=results.keys()).to_frame().reset_index()
+                if issues is not None:
+                    results[v] = issues
 
-            results.columns = ['function', 'column', 'index', 'notes']
-            results = results.sort_values('index').set_index(['index', 'column', 'function'])
+            vali = pd.concat(results.values(), keys=results.keys()).to_frame().reset_index()
+            vali.columns = ['function', 'index', 'notes']
+            vali['column'] = col
 
-            if verbose:
-                results = results.join(self.df, how='inner')
+            self.validation = pd.concat([self.validation, vali])
+
+        return self._format_results(
+            self.validation[
+                self.validation['column'].isin(columns)
+            ].sort_values(
+                ['index', 'function']
+            ).set_index(
+                ['index', 'column', 'function']
+            ),
+            verbose=verbose
+        )
+
+    def init_schema(self, schema):
+        base = {
+            col: {
+                'nulls': constants.NULLS
+            } for col in self.df.columns
+        }
+
+        for col, dd in schema.items():
+            assert col in base, 'Invalid input schema, column {0} does not exist in data'.format(col)
+
+            for k, v in dd.items():
+                if k in ['nulls']:
+                    base[col][k] = set(v + base[col][k])
+                else:
+                    base[col][k] = v
+
+        return base
+
+    def _find_columns(self, columns):
+        if not columns:
+            columns = self.df.columns
+        elif not isinstance(columns, list):
+            columns = [columns]
+
+        missing = [x for x in columns if not x in self.df.columns]
+        assert not missing, 'Columns "{0}" not in data'.format(', '.join(missing))
+
+        return columns
+
+    def _format_results(self, results, verbose=False):
+        if verbose:
+            results = results.join(self.df)
+
+        if self.as_dict:
+            if isinstance(results.index, pd.MultiIndex):
+                records = {}
+
+                for idx, row in results.iterrows():
+                    _values = records
+
+                    for k in idx:
+                        if not tools.key_exists(_values, k):
+                            _values[k] = {}
+
+                        if k != idx[-1]:
+                            _values = _values[k]
+
+                    _values[idx[-1]] = row.to_dict() if row.size > 1 else row.values[0]
+
+                return records
+            else:
+                return data.to_dict()
 
         return results

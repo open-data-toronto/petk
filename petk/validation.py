@@ -45,5 +45,11 @@ def sliver(series, params):
     if not slivers.empty:
         return slivers.apply(lambda x: '{0} slivers found within geometry'.format(x))
 
-def type(series, **kwargs):
-    pass
+def content_type(series, dtype):
+    dtypes = series.apply(lambda x: tools.get_dtype([x]))
+    expected = tools.get_dtype(dtype)
+
+    invalids = dtypes[dtypes != expected]
+
+    if not invalids.empty:
+        return invalids.apply(lambda x: 'Expected type {0} found type {1}'.format(expected, x))

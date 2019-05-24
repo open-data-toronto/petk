@@ -100,20 +100,22 @@ def get_type(series):
         elif value_count == len(series):
             modifier = constants.TYPE_UNIQUE
 
-        dtype = ''
-        if ptypes.is_bool_dtype(series) or (distinct_count == 2 and pd.api.types.is_numeric_dtype(series)):
-            dtype = constants.TYPE_BOOL
-        elif ptypes.is_datetime64_dtype(series):
-            dtype = constants.TYPE_DATE
-        elif ptypes.is_numeric_dtype(series):
-            dtype = constants.TYPE_NUM
-        else:
-            dtype = constants.TYPE_STR
+        dtype = get_dtype(series)
 
         return ' '.join([modifier, dtype]).strip()
     except:
         # eg. 2D series
         return constants.TYPE_UNSUPPORTED
+
+def get_dtype(data):
+    if ptypes.is_bool_dtype(data) or (isinstance(data, pd.Series) and data.nunique() == 2 and pd.api.types.is_numeric_dtype(data)):
+        return constants.TYPE_BOOL
+    elif ptypes.is_datetime64_dtype(data):
+        return constants.TYPE_DATE
+    elif ptypes.is_numeric_dtype(data):
+        return constants.TYPE_NUM
+    else:
+        return constants.TYPE_STR
 
 def is_outbound(x, lower, upper):
     if lower and x < lower:
