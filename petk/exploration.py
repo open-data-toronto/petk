@@ -110,45 +110,49 @@ class DataReport:
 
         columns = self._find_columns(columns)
 
-        for col, checks in self.schema.items():
+        for col, conditions in self.schema.items():
             if col not in columns or ('column' in self.validation.columns and col in self.validation['column'].values):
                 continue
 
-            audit = np.intersect1d(
-                list(checks.keys()),
+            checks = np.intersect1d(
+                list(conditions.keys()),
                 [method for method in dir(validation) if callable(getattr(validation, method))]
             )
 
-            results = {}
+            audits = {}
 
             if col == 'geometry':
                 issues = validation.geospatial(self.df[col])
 
                 if issues is not None:
-                    results['geospatial'] = issues
+                    audits['geospatial'] = issues
 
-            for v in audit:
-                issues = getattr(validation, v)(self.df[col], checks[v])
+            for v in checks:
+                issues = getattr(validation, v)(self.df[col], conditions[v])
 
                 if issues is not None:
                     results[v] = issues
 
-            vali = pd.concat(results.values(), keys=results.keys()).to_frame().reset_index()
-            vali.columns = ['function', 'index', 'notes']
-            vali['column'] = col
+            if audits:
+                audits = pd.concat(audits.values(), keys=audits.keys()).to_frame().reset_index()
+                audits.columns = ['function', 'index', 'notes']
+                audits['column'] = col
+            else:
+                audits = pd.DataFrame()
 
-            self.validation = pd.concat([self.validation, vali])
+            self.validation = pd.concat([self.validation, audits])
 
-        return self._format_results(
-            self.validation[
-                self.validation['column'].isin(columns)
+        results = self.validation.copy()
+        if not self.validation.empty:
+            results = results[
+                results['column'].isin(columns)
             ].sort_values(
                 ['index', 'function']
             ).set_index(
                 ['index', 'column', 'function']
-            ),
-            verbose=verbose
-        )
+            )
+
+        return self._format_results(results, verbose=verbose)
 
     def init_schema(self, schema):
         base = {
@@ -180,27 +184,28 @@ class DataReport:
         return columns
 
     def _format_results(self, results, verbose=False):
-        if verbose:
-            results = results.join(self.df)
-
         if self.as_dict:
-            if isinstance(results.index, pd.MultiIndex):
-                records = {}
+            records = {}
 
-                for idx, row in results.iterrows():
-                    _values = records
+            for idx, row in results.iterrows():
+                key = idx
+                values = records
 
+                if not isinstance(idx, str):
                     for k in idx:
-                        if not tools.key_exists(_values, k):
-                            _values[k] = {}
+                        if not tools.key_exists(values, k):
+                            values[k] = {}
 
                         if k != idx[-1]:
-                            _values = _values[k]
+                            values = values[k]
 
-                    _values[idx[-1]] = row.to_dict() if row.size > 1 else row.values[0]
+                    key = idx[-1]
 
-                return records
-            else:
-                return data.to_dict()
+                values[key] = row.to_dict() if row.size > 1 else row.values[0]
+
+            return records
+
+        if not results.empty and verbose:
+            results = results.join(self.df)
 
         return results
