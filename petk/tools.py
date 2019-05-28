@@ -89,11 +89,11 @@ def get_type(series):
 
         if value_count == 1 and distinct_count == 0:
             return constants.TYPE_EMPTY
-        elif pd_types.is_bool_dtype(values):
+        elif pd_types.is_bool_dtype(series):
             return constants.TYPE_BOOL
-        elif pd_types.is_datetime64_dtype(values):
+        elif pd_types.is_datetime64_dtype(series):
             return constants.TYPE_DATE
-        elif pd_types.is_numeric_dtype(values):
+        elif pd_types.is_numeric_dtype(series):
             return constants.TYPE_NUM
         else:
             return constants.TYPE_STR
