@@ -23,7 +23,8 @@ def get_description(series, name=''):
         'n_null': series.size - count,
     }
 
-    if not dtype in [constants.TYPE_UNSUPPORTED, constants.TYPE_CONST, constants.TYPE_UNIQUE, constants.TYPE_GEO]:
+    # TODO: if GEO calculate other things
+    if not dtype in [constants.TYPE_UNSUPPORTED, constants.TYPE_GEO]:
         n_distinct = series.nunique()
 
         description.update({
