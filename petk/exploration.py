@@ -17,7 +17,9 @@ class DataReport:
 
         self.schema = schema
         for col, dd in self.schema.items():
-            assert col in self.df.columns, 'Invalid input schema, column {0} does not exist in data'.format(col)
+            assert col in self.df.columns, \
+                'Invalid input schema, \
+                    column {0} does not exist in data'.format(col)
 
             for k, v in dd.items():
                 if k in ['nulls']:
@@ -25,7 +27,8 @@ class DataReport:
                         self.schema[col][k] = [v]
 
         for col in self.df.columns:
-            extra = self.schema[col]['nulls'] if tools.key_exists(self.schema, col, 'nulls') else []
+            extra = self.schema[col]['nulls'] \
+                if tools.key_exists(self.schema, col, 'nulls') else []
             self.df[col] = self.df[col].replace(constants.NULLS + extra, np.nan)
 
         self.description = pd.DataFrame()
@@ -44,7 +47,8 @@ class DataReport:
 
         additions.append(
             pd.Series([
-                ('columns', '{0}'.format(tools.get_type(self.df[col]).lower())) for col in self.df.columns
+                ('columns', '{0}'.format(tools.get_type(self.df[col]).lower()))
+                    for col in self.df.columns
             ]).value_counts()
         )
 
@@ -57,22 +61,32 @@ class DataReport:
                     ('geospatial', 'crs'): self.df.crs['init'],
                     ('geospatial', 'centroid_location'): centroid_loc,
                     ('geospatial', 'bounds'): self.df.total_bounds,
-                    ('geospatial', '3d_shapes'): has_z[True] if True in has_z.index else 0
+                    ('geospatial', '3d_shapes'): has_z[True]
+                        if True in has_z.index else 0s
                 })
             )
 
             geom_types = self.df.geom_type.value_counts()
-            geom_types.index = [('geospatial', '{0}s'.format(x.lower())) for x in geom_types.index]
+            geom_types.index = [
+                ('geospatial', '{0}s'.format(x.lower()))
+                    for x in geom_types.index
+            ]
             additions.append(geom_types)
 
-        return self._format_results(base.append(additions).to_frame(name='values'), as_dict=as_dict)
+        return self._format_results(
+            base.append(additions).to_frame(name='values'),
+            as_dict=as_dict
+        )
 
     def describe(self, columns=[], as_dict=False):
         columns = self._find_columns(columns)
 
         for c in columns:
             if c not in self.description.columns:
-                self.description = pd.concat([ self.description, tools.get_description(self.df[c], name=c) ], axis=1, sort=False)
+                self.description = pd.concat([
+                    self.description,
+                    tools.get_description(self.df[c], name=c)
+                ], axis=1, sort=False)
 
         return self._format_results(self.description[columns], as_dict=as_dict)
 
@@ -82,12 +96,14 @@ class DataReport:
 
         for col, conditions in self.schema.items():
             if col not in columns or \
-                ('column' in self.validation.columns and col in self.validation['column'].values):
+                ('column' in self.validation.columns and \
+                    col in self.validation['column'].values):
                 continue
 
             checks = np.intersect1d(
                 list(conditions.keys()),
-                [method for method in dir(validation) if callable(getattr(validation, method))]
+                [method for method in dir(validation)
+                    if callable(getattr(validation, method))]
             )
 
             audits = {}
@@ -105,7 +121,10 @@ class DataReport:
                     audits[v] = issues
 
             if audits:
-                audits = pd.concat(audits.values(), keys=audits.keys()).to_frame().reset_index()
+                audits = pd.concat(
+                    audits.values(),
+                    keys=audits.keys()
+                ).to_frame().reset_index()
                 audits.columns = ['function', 'index', 'notes']
                 audits['column'] = col
             else:
@@ -132,7 +151,8 @@ class DataReport:
             columns = [columns]
 
         missing = [x for x in columns if not x in self.df.columns]
-        assert not missing, 'Column(s) {0} not in data'.format(', '.join(missing))
+        assert not missing, \
+            'Column(s) {0} not in data'.format(', '.join(missing))
 
         return columns
 

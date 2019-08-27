@@ -49,7 +49,8 @@ def get_description(series, name=''):
 
             if dtype == constants.TYPE_NUM:
                 n_zeros = series.size - np.count_nonzero(series)
-                n_inf = series.loc[(~np.isfinite(series)) & series.notnull()].size
+                n_inf = series.loc[(~np.isfinite(series)) & \
+                    series.notnull()].size
 
                 description.update({
                     'mean': series.mean(),
@@ -75,7 +76,11 @@ def get_point_location(points, provider='nominatim', user_agent='petk'):
     if importlib.util.find_spec('geopy') is not None:
         from geopandas.tools import reverse_geocode
 
-        return reverse_geocode(centroid, provider=provider, user_agent=user_agent)['address'][0]
+        return reverse_geocode(
+            centroid,
+            provider=provider,
+            user_agent=user_agent
+        )['address'][0]
     else:
         return ', '.join([str(x) for x in mapping(centroid)['coordinates']])
 
