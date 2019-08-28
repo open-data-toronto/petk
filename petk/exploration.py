@@ -1,3 +1,5 @@
+import warning
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -11,24 +13,17 @@ import petk.validation as validation
 class DataReport:
     # TODO: clear validation cache on schema change
 
-    def __init__(self, data, schema={}):
+    def __init__(self, data, nulls=None, default=None, min=None, max=None, \
+                    sliver=None, bounding_box=None):
         self.df = data.copy()
         self.df.index.name = 'index'
 
-        self.schema = schema
-        for col, dd in self.schema.items():
-            assert col in self.df.columns, \
-                'Invalid input schema, \
-                    column {0} does not exist in data'.format(col)
-
-            for k, v in dd.items():
-                if k in ['nulls']:
-                    if not isinstance(v, (list, tuple)):
-                        self.schema[col][k] = [v]
+        self.schema = self._generate_schema(
+            nulls, default, min, max, sliver, bounding_box
+        )
 
         for col in self.df.columns:
-            extra = self.schema[col]['nulls'] \
-                if tools.key_exists(self.schema, col, 'nulls') else []
+            extra = self.nulls[col] if col in self.nulls else []
             self.df[col] = self.df[col].replace(constants.NULLS + extra, np.nan)
 
         self.description = pd.DataFrame()
@@ -150,8 +145,8 @@ class DataReport:
         elif not isinstance(columns, list):
             columns = [columns]
 
-        missing = [x for x in columns if not x in self.df.columns]
-        assert not missing, \
+        missing = np.setdiff1d(columns, self.df.columns)
+        assert len(missing) == 0, \
             'Column(s) {0} not in data'.format(', '.join(missing))
 
         return columns
@@ -182,3 +177,47 @@ class DataReport:
             return records
 
         return results.dropna(how='all', axis=0)
+
+    def _generate_schema(self, nulls, default, min, max, sliver, bounding_box):
+        def _format_requirements(self, req, to_list=False):
+            for k, v in req.items():
+                if not k in self.df.columns:
+                    warnings.warn(
+                        'Requirement {0} was provided for column {1} but the \
+                            column is not found in the data'.format(v, k),
+                        ResourceWarning
+                    )
+
+                    req.pop(f)
+
+                    continue
+
+                # TODO: NULL DEFAULTS?
+                if to_list and not isinstance(v, (list, tuple)):
+                    req[k] = [v]
+
+            return req
+
+        schema = {}
+
+        for req, name, def in zip(
+            [nulls, default, min, max],
+            constants.SCHEMA_STRUCTURE.items()
+        ):
+            req = _format_results(req, to_list=def['to_list'])
+
+            for col, condition in req.items():
+                if not col in schema:
+                    schema[col] = {}
+
+                # TODO: Validate the type of the column matches in def
+                schema[col][name] = condition
+
+        # TODO: THIS CAN BE HANDLED BETTER?
+        if 'geometry' in self.df.columns:
+            schema['geometry'] = {
+                'sliver': sliver,
+                'bounding_box': bounding_box
+            }
+
+        return schema
