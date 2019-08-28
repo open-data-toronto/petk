@@ -1,4 +1,4 @@
-import warning
+import warnings
 
 import geopandas as gpd
 import numpy as np
@@ -24,7 +24,10 @@ class DataReport:
 
         for col in self.df.columns:
             extra = self.nulls[col] if col in self.nulls else []
-            self.df[col] = self.df[col].replace(constants.NULLS + extra, np.nan)
+            self.df[col] = self.df[col].replace(
+                constants.SCHEMA_STRUCTURE['nulls']['defaults'] + extra,
+                np.nan
+            )
 
         self.description = pd.DataFrame()
         self.validation = pd.DataFrame()
@@ -57,7 +60,7 @@ class DataReport:
                     ('geospatial', 'centroid_location'): centroid_loc,
                     ('geospatial', 'bounds'): self.df.total_bounds,
                     ('geospatial', '3d_shapes'): has_z[True]
-                        if True in has_z.index else 0s
+                        if True in has_z.index else 0
                 })
             )
 
@@ -179,7 +182,7 @@ class DataReport:
         return results.dropna(how='all', axis=0)
 
     def _generate_schema(self, nulls, default, min, max, sliver, bounding_box):
-        def _format_requirements(self, req, to_list=False):
+        def _format_requirements(req, to_list=False):
             for k, v in req.items():
                 if not k in self.df.columns:
                     warnings.warn(
@@ -199,11 +202,11 @@ class DataReport:
 
         schema = {}
 
-        for req, name, def in zip(
-            [nulls, default, min, max],
+        for req, (name, desc) in zip(
+            [ nulls, default, min, max ],
             constants.SCHEMA_STRUCTURE.items()
         ):
-            req = _format_results(req, to_list=def['to_list'])
+            req = _format_results(req, to_list=desc['to_list'])
 
             for col, condition in req.items():
                 if not col in schema:
