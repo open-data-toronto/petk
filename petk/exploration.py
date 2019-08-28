@@ -188,8 +188,7 @@ class DataReport:
                         ResourceWarning
                     )
 
-                    req.pop(f)
-
+                    req.pop(k)
                     continue
 
                 # TODO: NULL DEFAULTS?
