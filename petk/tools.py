@@ -106,14 +106,6 @@ def get_type(series):
         # eg. 2D series
         return constants.TYPE_UNSUPPORTED
 
-def is_outbound(x, lower, upper):
-    if lower and x < lower:
-        return 'Value is less than the lower bound'
-    elif upper and x > upper:
-        return 'Value is greater than the upper bound'
-    else:
-        return None
-
 def is_sliver(x, threshold):
     if 'polygon' in x.geom_type.lower():
         return x.area < threshold

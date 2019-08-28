@@ -33,22 +33,17 @@ def geospatial(series):
     if not invalids.empty:
         return invalids.apply(lambda x: explain_validity(x) if not x is None else 'Null geometry')
 
-def range(series, bounds):
-    assert len(bounds) == 2, 'A lower and upper bound must be provided, use np.nan if no bounds'
-
-    lower, upper = bounds
-
-    outbounds = series.apply(tools.is_outbound, args=[lower, upper])
-    outbounds = outbounds[~outbounds.isnull()]
+def min(series, lim):
+    outbounds = series[series < lim]
 
     if not outbounds.empty:
-        return outbounds
+        return outbounds.apply(lambda x: 'Value is less than lower bound')
 
-def accepted(series, values):
-    outbounds = series[~series.isin(values)]
+def max(series, lim):
+    outbounds = series[series > lim]
 
     if not outbounds.empty:
-        return outbounds.apply(lambda x: 'Value not within the accepted range')
+        return outbounds.apply(lambda x: 'Value is greater than upper bound')
 
 def sliver(series, params):
     pieces = series.explode().to_crs({'init': 'epsg:{0}'.format(params['projected_coordinates']), 'units': 'm'})
