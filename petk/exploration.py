@@ -93,7 +93,7 @@ class DataReport:
         columns = self._find_columns(columns)
 
         for col, conditions in self.schema.items():
-            if col not in columns or \
+            if conditions is None or \
                 ('column' in self.validation.columns and \
                     col in self.validation['column'].values):
                 continue
@@ -194,7 +194,6 @@ class DataReport:
                     req.pop(k)
                     continue
 
-                # TODO: NULL DEFAULTS?
                 if to_list and not isinstance(v, (list, tuple)):
                     req[k] = [v]
 
@@ -215,7 +214,6 @@ class DataReport:
                 # TODO: Validate the type of the column matches in def
                 schema[col][name] = condition
 
-        # TODO: THIS CAN BE HANDLED BETTER?
         if 'geometry' in self.df.columns:
             schema['geometry'] = {
                 'sliver': sliver,
